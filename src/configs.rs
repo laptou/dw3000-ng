@@ -435,7 +435,7 @@ pub enum PhrRate {
 }
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
 pub struct TxConfig {
     /// The length of the preamble.
     pub preamble_length: PreambleLength,
