@@ -6,7 +6,7 @@ use byte::BytesExt as _;
 
 use super::AutoDoubleBufferReceiving;
 use crate::{
-    configs::{PdoaMode, SfdSequence},
+    configs::{PdoaMode, SfdSequence, TxConfig},
     maybe_async_attr, spi_type,
     time::Instant,
     Config, Error, FastCommand, Ready, Sending, SingleBufferReceiving, Sleeping, DW3000,
@@ -233,7 +233,7 @@ where
         mut self,
         data: &[u8],
         send_time: SendTime,
-        config: Config,
+        config: TxConfig,
     ) -> Result<DW3000<SPI, Sending>, Error<SPI>> {
         self.clear_event_counter().await?;
         self.enable_event_counter().await?;
@@ -280,9 +280,11 @@ where
                 //
                 // NOTE: DW3000's DX_TIME register is 32 bits wide, but only the top 31 bits are used.
                 // The last bit is ignored per the user manual!!!
-                if time.value() % (1 << 9) != 0 {
-                    panic!("Time must be rounded to top 31 bits!");
-                }
+                debug_assert_eq!(
+                    time.value() % (1 << 9),
+                    0,
+                    "time must be rounded to top 31 bits"
+                );
 
                 // Put the time into the delay register
                 // By setting this register, the chip knows to delay before transmitting
@@ -291,13 +293,25 @@ where
                     .modify(|_, w| // 32-bits value of the most significant bits
                     w.value( (time.value() >> 8) as u32 ))
                     .await?;
-                self.fast_cmd(FastCommand::CMD_DTX).await?;
+
+                match config.receive_after_transmit {
+                    true => self.fast_cmd(FastCommand::CMD_DTX_W4R).await?,
+                    false => self.fast_cmd(FastCommand::CMD_DTX).await?,
+                }
             }
             SendTime::OnSync => {
+                debug_assert_eq!(
+                    config.receive_after_transmit, false,
+                    "receive_after_transmit cannot be combined with OnSync"
+                );
+
                 self.ll.ec_ctrl().modify(|_, w| w.ostr_mode(1)).await?;
                 self.ll.ec_ctrl().modify(|_, w| w.osts_wait(33)).await?;
             }
-            SendTime::Now => self.fast_cmd(FastCommand::CMD_TX).await?,
+            SendTime::Now => match config.receive_after_transmit {
+                true => self.fast_cmd(FastCommand::CMD_TX_W4R).await?,
+                false => self.fast_cmd(FastCommand::CMD_TX).await?,
+            },
         }
 
         Ok(DW3000 {
@@ -330,7 +344,7 @@ where
         self,
         frame: Ieee802154Frame<T>,
         send_time: SendTime,
-        config: Config,
+        config: TxConfig,
     ) -> Result<DW3000<SPI, Sending>, Error<SPI>>
     where
         T: AsRef<[u8]>,
@@ -363,7 +377,7 @@ where
         self,
         data: &[u8],
         send_time: SendTime,
-        config: Config,
+        config: TxConfig,
     ) -> Result<DW3000<SPI, Sending>, Error<SPI>> {
         return self
             .send_to(
@@ -402,7 +416,7 @@ where
         send_time: SendTime,
         pan_id: Ieee802154Pan,
         address: Ieee802154Address,
-        config: Config,
+        config: TxConfig,
     ) -> Result<DW3000<SPI, Sending>, Error<SPI>> {
         let mut buffer = [0_u8; 127];
         let len = self

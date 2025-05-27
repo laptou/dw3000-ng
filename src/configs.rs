@@ -433,3 +433,17 @@ pub enum PhrRate {
     /// PHR at data rate (6.8 Mbps)
     DataRate = 1,
 }
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct TxConfig {
+    /// The length of the preamble.
+    pub preamble_length: PreambleLength,
+    /// Sets the bitrate of the transmission.
+    pub bitrate: BitRate,
+    /// Sets the ranging bit in the transmitted frame.
+    /// This has no effect on the capabilities of the DW3000.
+    pub ranging_enable: bool,
+    /// If true, enables receiving immediately after transmission is complete.
+    pub receive_after_transmit: bool,
+}
